@@ -1,0 +1,1430 @@
+---
+title: "EUKheist dictyochophyceae analysis"
+author: "Sarah K Hu"
+date: "11/24/2020"
+output: 
+  html_document:
+    number_sections: true
+    theme: spacelab
+    highlight: monochrome
+    collapsed: false
+    toc: true
+    toc_depth: 3
+    toc_float: true
+  pdf_document:
+    toc: true
+    toc_depth: '3'
+knit: (function(input_file, encoding) {
+  out_dir <- 'docs';
+  rmarkdown::render(input_file,
+ encoding=encoding,
+ output_file=file.path(dirname(input_file), out_dir, 'index.html'))})
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## set up - tmp
+```{r tmp set up}
+setwd("/Users/sarahhu/Desktop/Projects/eukheist_proj/dictyochophyceae-analysis/")
+```
+
+# Introduction
+Using the Tara Oceans metagenomic and metatranscriptomic data, Metagenome Assembled Genomes identified as _Dictyochophyceae_ were isolated as a case study to address some key questions.
+
+*(1)* Can we use amplicon data to benchmark what we see in the eukaryotic MAGs?
+*(2)* What is the distribution of the _Dictyochophyceae_ MAGs? and how does the biogeography of the MAGs vary according to MAG content, coverage, or other parameters?
+*(3)* What are the ecological differences among the detected _Dictyochophyceae_ MAGs?
+
+## Description of data origin
+*Amplicon Sequence Variants (ASVs)*
+ASV taxonomy table from Benjamin Callahan. (2017). ASV Tables inferred by DADA2 from the TARA Oceans v9 metabarcoding dataset [Data set]. Zenodo. http://doi.org/10.5281/zenodo.581694. ASVs originate from de Vargas, C., Audic, S., Henry, N., Decelle, J., Mahé, F., Logares, R., … Karsenti, E. (2015, May 22). First Tara Oceans V9 rDNA metabarcoding dataset. Zenodo. http://doi.org/10.5281/zenodo.15600, where the V9 hypervariable region was amplified and sequenced. Tara Ocean ASVs total to 107,868 total and cover 299 samples.
+
+*_Dictyochophyceae_ MAGs and relative abundances*
+Metagenomic and metatranscriptomic reads were mapped against the microbial eukaryotic MAGs determined from the Tara Ocean dataset. Mapped reads were used to estimate relative abundances, where the total number of reads was used to calculate RPKM. TPM was also calculated, which involved normalizing the RPKM to the sum of all RPKMs in a given sample. 
+
+
+** Input MAGs are from ```/vortexfs1/omics/alexander/halexander/2020-tara-mag-abund/MAG_rpkm.csv``` and from the 50% cutoff high quality euk MAGs. MAG relative abundance input data frame lists of the name of the MAG (n=3554 total line), then the run accession that it was found in, the relative abundance, and the taxonomic identity. The relative abundance adds up to 100 for each ERR. ERRs covered total to 298 samples.
+
+## Set up working R environment & import data
+
+```{r load libraries, message=FALSE}
+library(tidyverse); library(broom); library(ggtext); library(directlabels)
+library(ggupset); library(cowplot)
+```
+
+
+# Assign taxonomy to V9 ASVs
+Clarify links to data origin here.
+```{r}
+# library(dada2)
+# Import data from Callahan et al.
+# tara <- readRDS("st.consensus.rds")
+
+# Assign taxonomy
+# tara_tax <- assignTaxonomy(tara, "/vortexfs1/omics/huber/shu/db/pr2-db/pr2_version_4.12.0_18S_dada2.fasta.gz", taxLevels = c("Kingdom","Supergroup","Division","Class","Order","Family","Genus","Species"), multithread = TRUE)
+## taxonmoy with the PR2 (v4.12) database done separately
+
+# Saved output as R data object "tara-taxassign-30-06-2020.RData"
+#
+# Import results from taxonomy assignment
+# load("tara-taxassign-30-06-2020.RData", verbose = T)
+# tara_df <- as.data.frame(t(tara)) # format the count table
+# head(tara_tax_df[1:2,]) #taxonomy assignment
+```
+
+```{r}
+# Compile & save text file with annoated data
+# tara_df_annot <- tara_df %>% 
+#     rownames_to_column(var = "seq") %>% 
+#     pivot_longer(cols = starts_with("ERR")) %>%  
+#     left_join((tara_tax_df  %>% rownames_to_column(var = "seq"))) %>% 
+# #     left_join(meta, by = c("name" = "INSDC.run.accession.number.s.")) %>% 
+#     select(-seq) %>% 
+#     data.frame
+# head(tara_df_annot[1:2,])
+# dim(tara_df_annot)
+```
+
+Import metadata for ASVs
+```{r}
+# meta <- read.csv("metabar.csv"); meta$X <- NULL
+# metaASV_2 <- meta %>% 
+#     select(Sample.material = Sample.label..TARA_station._environmental.feature_size.fraction.,
+#           Sample..Sequence.Identifier, run_accession = INSDC.run.accession.number.s.,
+#           Station = Station.identifier..TARA_station.., 
+#           Latitude = Latitude..degrees.North., Longitude = Longitude..degrees.East.,
+#           Depth = Sampling.depth..m., Environmental.Feature, 
+#           SizeFrac_low = Size.fraction.lower.threshold..micrometre., 
+#            SizeFrac_upper = Size.fraction.upper.threshold..micrometre.,
+#           MP.biom = Marine.pelagic.biomes..Longhurst.2007.,
+#            OS.region = Ocean.and.sea.regions..IHO.General.Sea.Areas.1953...MRGID.registered.at.www.marineregions.com., 
+#            BG.provine = Marine.pelagic.biomes...Longhurst.2007...MRGID.registered.at.www.marineregions.com.) %>% 
+#     add_column(study_accession = "PRJEB6610") %>% 
+#     data.frame
+# colnames(metaASV_2) <- paste0("ASV_", colnames(metaASV_2))
+# # head(metaASV_2[1:2,])
+# 
+# metaASV_3 <- metaASV_2 %>% 
+#     select(SizeFrac_low = ASV_SizeFrac_low,
+#           SizeFrac_upper = ASV_SizeFrac_upper,
+#           Lat = ASV_Latitude,
+#           Long = ASV_Longitude, 
+#            everything()) %>% 
+#     data.frame
+```
+
+
+# Compare relative abundance of 18S ASVs and MAGs
+
+MAG-based refinement tools may not fully capture the taxonomic assignment for a given microbial eukaryotic species. Here, we compare the relative abundances of ASVs and MAGs, for every sample in which they both appear, in order to supplement the ecological and biological findings for a given MAG. This may serve to benchmark the biogeography for a given taxonomic lineage or additional taxonomic resolution (i.e., assignment to the species level).
+
+
+## Import key data frames
+```{r Import ASV files}
+load("input-data/inputdfs.RData", verbose = T) #Future SH note - sort out ASV files and get the correct ones in order
+# Use asv_relab from 'inputdfs'
+
+# Modify sequence IDs
+## Save for downstream analysis
+asv_seqIDs <- asv_relab %>% 
+  select(seq) %>% 
+  distinct() %>% 
+  rowid_to_column("seq_num") %>% 
+  mutate(seq_id = paste("ASV-", seq_num, sep = ""))
+# head(asv_seqIDs)
+# length(unique(asv_seqIDs$seq_num))
+# length(unique(asv_seqIDs$seq_id))
+```
+
+```{r Import MAG files}
+# Import MAG counts
+mag_counts_updated <- read.csv("input-data/MAG_tpm.csv")
+# Import MAG taxonomic assignments (Feb 2, 2021)
+mag_taxonomy <- read.csv("input-data/2021-marzoanmmetsp-estimated-taxonomy-levels.csv")
+```
+
+```{r Import SampleLists}
+metaT_metadata <- read.delim("input-data/SampleList_2020_metaT.txt")
+metaG_metadata <- read.delim("input-data/SampleList_2020_metaG.txt")
+tmp_metadata <- read.delim("input-data/PRJEB4352_metaG_wenv.txt")
+```
+
+
+```{r}
+# dic<-c("MS-all-SRF-0-8-5-00_bin-158","MS-all-SRF-0-8-5-00_bin-588","IO-all-SRF-0-8-5-00_bin-80","SAO-all-SRF-0-8-5-00_bin-590")
+# tmp_subset <- filter(mag_taxonomy, mag %in% dic)
+```
+
+In total, there are only 2 MAGs that were assigned to the class Dictyochophyceae.
+```{r}
+# View(filter(mag_taxonomy, class == "Dictyochophyceae"))
+unique(mag_taxonomy$class)
+```
+
+Whereas there are 255 ASVs with that assignment.
+```{r}
+# View(filter(asv_relab, class == "Dictyochophyceae"))
+length(unique(asv_relab$class))
+tmp <- filter(asv_relab, class == "Dictyochophyceae")
+length(unique(tmp$seq))
+```
+
+Import metadata and clean up
+```{r}
+# Separate ERRs into rows & keep only what I need
+head(metaG_metadata)
+
+metaG_reformat <- metaG_metadata %>% 
+  separate_rows(ERR_list, sep = ", ") %>% 
+  separate(Sub_region, c("REGION", "subregion"), sep = "-", remove = FALSE) %>%
+  separate(Depth_sizefrac, c("DEPTH", "min", "max"), sep = "-", remove = FALSE) %>% 
+  unite(SIZEFRAC, min, max, sep = "-") %>% 
+  select(-Assembly_group, -ERR_count, run_accession = "ERR_list", REGION, DEPTH, SIZEFRAC) %>% 
+  left_join(tmp_metadata %>% select(run_accession, sampleid = Sample.material)) %>% 
+  distinct()
+
+# unique(metaG_metadata$Sub_region)
+# head(metaG_reformat)
+```
+
+
+```{r Add and format metadata}
+# tmp_metadata <- read.delim("input-data/PRJEB4352_metaG_wenv.txt")
+# 
+# metaG_metadata <- tmp_metadata %>% 
+#     select(study_accession, sample_accession, run_accession, experiment_alias,
+#           sample_alias, sample_title, Campaign, Station, Device, Event,
+#           Latitude, Longitude, Env.feature, Depth = Depth..nominal, 
+#            SizeFrac_low = Fraction.lower..µm., SizeFrac_upper = Fraction.upper..µm., 
+#            Sample.material, Sample.label,
+#           MP.biome, OS.region, BG.province)  %>% 
+#     mutate(SizeFrac_upper = str_replace(SizeFrac_upper, ">3.00", ">")) %>% 
+#     mutate(SizeFrac_upper = str_replace(SizeFrac_upper, ">5.00", ">")) %>% 
+#     mutate(SizeFrac_upper = str_replace(SizeFrac_upper, ">0.80", ">")) %>% 
+#     mutate(SizeFrac_upper = str_replace(SizeFrac_upper, "2000.00", "2000")) %>% 
+#     mutate(SizeFrac_upper = str_replace(SizeFrac_upper, "180.00", "180")) %>% 
+#     mutate(SizeFrac_upper = str_replace(SizeFrac_upper, "20.00", "20")) %>% 
+#     mutate(SizeFrac_upper = str_replace(SizeFrac_upper, "5.00", "5")) %>% 
+#     mutate(SizeFrac_upper = str_replace(SizeFrac_upper, "3.00", "3")) %>% 
+#     data.frame
+
+# Reformat column names and class
+# colnames(metaG_metadata) <- paste0("MAG_", colnames(metaG_metadata))
+# metaG_metadata$MAG_SizeFrac_upper <- as.factor(metaG_metadata$MAG_SizeFrac_upper)
+# metaG_metadata$MAG_Depth <- as.factor(metaG_metadata$MAG_Depth)
+# 
+# # Get sample list information along with ERRs
+# mag_sampleid <- metaG_metadata %>% 
+#   select(sampleid = MAG_Sample.material, run_accession = MAG_run_accession) %>% 
+#   distinct()
+# head(metaG_reformat)
+```
+
+> Description of data frame structure.
+
+Compile MAGs of interest and subset to include distribution and taxonomy information.
+```{r Calc relative abundance}
+# head(mag_counts_updated[1:2,])
+
+mags_relab <- mag_taxonomy %>% 
+  # Join with count data, only keep those with taxonomy names
+  inner_join(mag_counts_updated, by = c("mag" = "Genome")) %>% 
+  pivot_longer(cols = starts_with("ERR"), names_to = "run_accession", values_to = "tpm") %>% 
+  group_by(run_accession) %>% 
+  # Calculate relative abundance
+  mutate(relabun = ((tpm / sum(tpm))*100)) %>% 
+  # Join with sampleID information (used to match with ASVs)
+  left_join(metaG_reformat) %>%
+  unite(fullname, supergroup, division, class, order, family, genus, species, sep = ";", remove = FALSE) %>% 
+  mutate(fullname = gsub(";-", "", fullname)) %>% 
+  data.frame
+
+# 994 total MAGs (Feb 2, 2021)
+length(unique(mags_relab$mag))
+head(mags_relab)
+# Check relative abundance
+# tmp <- filter(mags_relab, run_accession == "ERR1700891")
+# sum(tmp$relab) # Sum to 100
+```
+
+
+## Survey MAG and ASV tables
+> For each sample (or ERRxxx), the relative abundances of ASVs or MAGs totals to 100%.
+
+```{r Report summary of input data}
+# Total MAGs and ASVs
+writeLines(paste("there are", length(unique(mags_relab$mag)), "total MAGs, which cover", length(unique(mags_relab$sampleid)), "samples."))
+writeLines(paste("there are", length(unique(asv_relab$seq)), "total ASVs, which cover",length(unique(asv_relab$sampleid)), "samples."))
+
+# Overlap
+writeLines(paste(dim(mags_relab %>% 
+    select(sampleid) %>% 
+    distinct()  %>% 
+    inner_join(select(asv_relab, sampleid)) %>% 
+    filter(!is.na(sampleid)) %>% 
+    distinct())[1], "samples overlap betwen MAG- and ASV-derived data"))
+```
+
+### Plot both ASV and MAG taxonomic composition
+Remove NAs ahead of time.
+```{r Output table of ASV and MAG taxa, fig.height=7, fig.width=10}
+# Summary of upper (Taxonomic) level IDs
+summary_mag <- mags_relab %>% select(supergroup, division, class, mag) %>% 
+    group_by(class) %>% mutate(totalMAGs = n(), totaluniqMAGs = n_distinct(mag)) %>% 
+    select(-mag) %>% distinct() %>% arrange(supergroup, division) 
+# summary_mag
+# unique(summary_mag$supergroup)
+# colnames(summary_mag)
+
+ggplot(summary_mag %>% filter(!(class == "-")), aes(x = division, y = totalMAGs, fill = class)) +
+  geom_bar(stat = "identity", color = "black") +
+  facet_grid(supergroup ~ ., space = "free", scale = "free") +
+  theme_linedraw() +
+  coord_flip() +
+  scale_y_continuous(expand = c(0,0)) +
+  theme(axis.text.x = element_text(angle = 0),
+        strip.background = element_blank(),
+        legend.position = "bottom") +
+  labs(x = "", y = "Total MAGs", title = "MAGs by class")
+```
+
+```{r Summary of taxa in ASV data, fig.width=8, fig.height=7}
+# head(asv_relab)
+summary_asv <- asv_relab %>% select(supergroup, division, class, seq) %>% 
+    group_by(class) %>% mutate(totalASVs = n(), totaluniqASVs = n_distinct(seq)) %>% 
+    select(-seq) %>% distinct() %>% arrange(supergroup, division)
+# head(summary_asv)
+
+ggplot(summary_asv %>% filter(!is.na(division)), aes(x = supergroup, y = totalASVs, fill = division)) +
+  geom_bar(stat = "identity", color = "black") +
+  facet_grid(supergroup ~ ., space = "free", scale = "free") +
+  theme_linedraw() +
+  coord_flip() +
+  scale_y_continuous(expand = c(0,0)) +
+  theme(axis.text.x = element_text(angle = 0),
+        strip.background = element_blank(),
+        legend.position = "bottom") +
+  labs(x = "", y = "Total ASVs", title = "ASVs by class")
+```
+
+## **_Need to update with new taxonomic assignment of each MAG_**
+
+*Function to match ASV results to MAG results*
+
+Below function will map all ASVs to MAGs based on taxonomic name. Function will retain only samples that appear in both ASV and MAG data. Mapping relies on matching the sample ID (Tara station #, size fraction, depth) and taxonomic grouping. Then will subset so that the number of ASV-MAG occurrences is > freq. Then, function performs linear regression, keeps positive slopes, and subsets the highest r.squared value for a MAG-ASV match. This is all written to output filename.
+
+
+> Plan to look into the Dictyochophyceae (class level Silicoflagellates within the Ochrophyta).
+
+# Series of functions to compare MAGs and ASVs
+```{r Function to check MAG and ASV levels}
+# Check MAG data for taxa of interest
+check_mag <- function(mag_df, asv_df, level){
+    level <- enquo(level)
+    mag_out <- mag_df %>% 
+        unite(TAXA, supergroup:!!level, remove = TRUE, sep =";")
+    asv_out <- asv_df %>% 
+        unite(TAXA, supergroup:!!level, remove = TRUE, sep =";")
+    writeLines(paste(length(unique(mag_out$TAXA)), "unique in MAG data"))
+    writeLines(paste(length(unique(asv_out$TAXA)), "unique in ASV data"))
+    unique(mag_out$TAXA)
+}
+
+# check_mag(mag_relab, asv_relab, class)
+```
+
+```{r Check how many matches there are between MAG and ASV data}
+# Output lists matches to the CLASS level.
+## There are 16 unique tax IDs to the class level from the MAGs and 191 unique class level designations in the ASV data
+check_mag(mags_relab, asv_relab, class)
+
+# head(asv_relab)
+# At the order level, there are 18 unique tax desigations to the order level in the MAG data and over 380 in the ASV data
+# check_mag(mag_relab, asv_relab, order)
+```
+
+Note the group: _"Stramenopiles;Ochrophyta;Dictyochophyceae;Dictyochophyceae_X"_, that ends with *_X*. This indicates that there is not any more meaningful information beyond Dictyochophyceae. Plan to explore this further.
+
+# Dictyochophyte MAG identity vs. ASV identity
+
+```{r Query dictyochophyte MAG and ASV}
+# check_mag(mags_relab, asv_relab, class)
+colnames(mags_relab)
+colnames(asv_relab)
+```
+
+Subsetting at the class level for dictyochophytes and matching MAGs and ASVs seems most appropriate.
+
+```{r Function to map ASV and MAG data}
+map_ASVtoMAG_bylevel <- function(mag_df, asv_df, subset_level, subset_taxa, map_level, freq){
+    subset_level <- enquo(subset_level)
+    map_level <- enquo(map_level)
+    mag_df %>% 
+    filter(!!subset_level == subset_taxa) %>% 
+    # Classify to genus level
+    unite(TAXA, supergroup:!!map_level, remove = FALSE, sep =";") %>% 
+    # Classify ASVs to genus level and merge by genus and sample ID
+    left_join(unite(asv_df, TAXA, supergroup:!!map_level, remove = FALSE, sep =";"), 
+              by = c("TAXA"="TAXA", "sampleid" = "sampleid"), suffix = c(".MAG", ".ASV")) %>%
+    filter(!is.na(run_accession.ASV) & !is.na(sampleid)) %>% # Remove samples without an ASV    
+    group_by(mag, seq) %>% # Selects correct grouping
+    mutate(OCCUR = n_distinct(sampleid)) %>% # Count occurences and ratio of relative abundances
+    filter(OCCUR >= freq) %>% #ASV-MAG incidence must occur more than predetermined # of times
+    data.frame
+    }
+```
+
+Below function subsets the ASV and MAG dataframe to select only entries that match to the class level and include "Dictyochophyceae". After matching ASVs and MAGs, only keep those MAG-ASV matches where there are at least 5 samples that include both ASV and MAGs. Increasing this last number may improve statistical power of the MAG and ASV match.
+
+Matching the MAGs to the ASVs that all fell within the Ochrophyta category (division level). For a MAG and ASV, if both division level assignments were ochrophyta and the ASV and MAG appeared in the same 25 samples, they matched. 
+
+```{r Function to select and map dictyochophytes}
+# dictyo_class <- map_ASVtoMAG_bylevel(mag_relab, asv_relab, class, "Dictyochophyceae", class, 0)
+ochro_div <- map_ASVtoMAG_bylevel(mags_relab, asv_relab, division, "Ochrophyta", division, 20)
+```
+
+
+Over 30,000 pairs of MAG-ASV matched.
+```{r}
+colnames(ochro_div)
+dim(ochro_div)
+tmp <- select(ochro_div, mag, seq) %>% distinct()
+dim(tmp)
+
+```
+
+> Ecological inquiry into how we can augment taxonomy assignment for MAGs.
+
+**Can we expand the number of MAGs that represent Dictyochophytes?**
+
+Subset by Dictyochophyte assignment - where either 
+```{r Select dictyochyphytes}
+ochro_sub_dictyo <- ochro_div %>% 
+  mutate(dictyo_mag = ifelse(class.MAG == "Dictyochophyceae", "true", "false"),
+         dictyo_asv = ifelse(class.ASV == "Dictyochophyceae", "true", "false")) %>% 
+  unite(category, dictyo_mag, dictyo_asv, sep = "-") %>%
+  mutate(dictyo = case_when(
+    category == "true-true" ~ "both",
+    category == "true-false" ~ "MAG",
+    category == "false-true" ~ "ASV",
+    TRUE ~ "none"
+  )) %>%
+  filter(!(dictyo == "none")) 
+head(ochro_sub_dictyo)
+# dim(ochro_sub_dictyo)
+# table(ochro_sub_dictyo$dictyo)
+# 1.2 million!
+```
+
+What is the result of this matching?
+* Total number of MAGs and ASVs included in matches
+Over 3600 unique MAG-ASV pairs
+
+```{r List full taxonomic classifications included}
+# unique(ochro_sub_dictyo$TAXA)
+# unique(dictyo_class$fullname.ASV)
+# View(dictyo_class)
+```
+
+Perform linear regression to see if ASV relative abundance supports MAG relative abundance.
+```{r Estimate linear regression function}
+# Function to estimate slope and r squared of ASV and MAG pairs
+## Options to subset by frequency again and r-squared
+est_lm <- function(df, freq, r){
+    df_line <- df %>% 
+    nest(-mag, -seq) %>% 
+    mutate(lm_fit = map(data, ~ lm(relabun.MAG ~ relabun.ASV, data = .)),
+          tidied = map(lm_fit, tidy)) %>% 
+    unnest(tidied) %>% 
+    select(mag, seq, term, estimate) %>%
+    pivot_wider(names_from = term, values_from = estimate) %>% 
+    data.frame
+    # Modify column names
+    colnames(df_line) <- c("mag", "seq", "Intercept", "Slope")
+    # Re-do lm() to select rsquared value
+    df_lm <- df %>% 
+    nest(-mag, -seq) %>% 
+    mutate(lm_fit = map(data, ~ lm(relabun.MAG ~ relabun.ASV, data = .)),
+          glanced = map(lm_fit, glance)) %>% 
+    unnest(glanced) %>% 
+    select(mag, seq, r.squared) %>% 
+    # Join with other lm information
+    right_join(df_line, by = c("mag"="mag", "seq"="seq")) %>% 
+    # Join with all other metadata for mag-seq pair
+    right_join(df, by = c("mag"="mag", "seq"="seq")) %>% 
+    # Filter by positive slope, occurence, and rsquared value
+    filter(Slope > 0) %>% 
+    filter(OCCUR > freq) %>% 
+    filter(r.squared > r) %>% 
+    data.frame
+    tmp_stats <- df_lm %>% 
+    select(mag, seq, OCCUR, r.squared) %>% 
+    distinct()
+    # Report:
+    writeLines(paste(range(tmp_stats$r.squared)[1], " min of r^2 values"))
+    writeLines(paste(range(tmp_stats$r.squared)[2], " max of r^2 values"))
+    writeLines(paste(length(unique(tmp_stats$mag))," total MAGs"))
+    writeLines(paste(length(unique(tmp_stats$seq))," total ASVs"))
+    writeLines(paste(dim(tmp_stats)[1]," total comparisons that will be plot"))
+    return(df_lm)
+    }
+```
+
+
+```{r Linear regression for dictyochophyceae MAG-ASV}
+dictyo_lm <- est_lm(ochro_sub_dictyo, 20, 0.6)
+```
+
+> Output from linear regression function reported the min and max of r-squared values, the total MAGs and ASVs used for comparison and the total number of pairwise comparisons that need to be represented. 
+
+```{r How do MAGs and ASV correspond?}
+# Explore and plot the comparison between MAG and ASVs for dictyochophytes
+# From 249 comparisons to be plot, subsample to more promising comparisons
+## And reformat
+# head(asv_seqIDs)
+dictyo_lm_toplot <- dictyo_lm %>% 
+  # Select minimum R squared value
+  filter(r.squared >= 0.6) %>% 
+  # import ASV sequence IDs
+  left_join(asv_seqIDs) %>% 
+  # Extract highest resolution of taxonomic name for MAGs and ASVs
+  mutate(MAG_tax = str_extract(fullname.MAG, '\\b[^;]+$'),
+         ASV_tax = str_extract(fullname.ASV, '\\b[^;]+$'),
+         MAG_ID = paste("MAG", str_extract(mag, '\\b[^-]+$'), MAG_tax, sep = "-"),
+         ASV_ID = paste(seq_id, ASV_tax, sep = "-")) %>%
+  data.frame
+head(dictyo_lm_toplot)
+```
+
+
+```{r Plot all pairs, fig.height=11, fig.width=15}
+# svg("figs/Supplementary-dictyochophyte-allpairs.svg", h = 11, w = 15)
+dictyo_lm_toplot %>% 
+   ggplot(aes(x = relabun.ASV, y = relabun.MAG, fill = ASV_ID)) +
+    geom_abline(intercept = 0, slope = 1, alpha = .5) +  # Line of perfect fit
+    geom_abline(aes(group = ASV_ID, slope = Slope, 
+                    intercept = Intercept, color = ASV_ID)) +
+    geom_dl(aes(label = round(r.squared, 2), color = ASV_ID),
+            method = list("smart.grid", cex = 0.8)) +
+    geom_point(aes(fill = ASV_ID), color = "black", size = 2, shape = 21) +
+    facet_wrap(MAG_ID ~.,scales = "free") +
+    theme_linedraw() +
+    theme(axis.text = element_text(color = "black", face = "bold"),
+         strip.background = element_blank(),
+         strip.text = element_text(size = 8, color = "black", hjust = 1, vjust = -1),
+         legend.position = "right",
+          legend.title = element_blank(),
+         plot.margin = unit(c(1,3,1,1), "lines")) +
+    labs(x = "MAG relative abundance", y = "ASV relative abundance", 
+         title = "") +
+    guides(fill = guide_legend(ncol = 1), 
+          col = guide_legend(ncol = 1))
+# dev.off()
+```
+
+Probably come back to this plot, for the main text and evaluate which one to plot as an example... likely the core MAGs chosen to look at. and perhaps those that show some trophic differences of interest. 
+```{r}
+# View(dictyo_lm_toplot)
+```
+
+
+```{r Plot only the highest rsquared and occurence, fig.height=5, fig.width=7}
+
+dictyo_bestfit <- dictyo_lm_toplot %>% 
+  filter(OCCUR > 50) %>% 
+  # filter(r.squared > 0.7) %>% 
+  group_by(MAG_ID) %>% 
+    slice_max(r.squared) %>% 
+  ggplot(aes(x = relabun.ASV, y = relabun.MAG, fill = ASV_tax)) +
+    geom_abline(intercept = 0, slope = 1, alpha = .5) +  # Line of perfect fit
+    geom_abline(aes(group = seq, slope = Slope, 
+                    intercept = Intercept, color = ASV_tax)) +
+    # geom_dl(aes(label = round(r.squared, 3), color = ASV_tax),
+            # method = list("last.points", cex = 0.8)) +
+    # geom_dl(aes(label = round(r.squared, 2), color = ASV_tax),
+    #         method = list("smart.grid", cex = 0.8)) +
+    geom_point(aes(fill = ASV_tax), color = "black", size = 2) +
+    # scale_shape_manual(values = c(21, 22, 23, 24)) +
+    # scale_fill_brewer(palette = "Dark2") +
+    # scale_color_brewer(palette = "Dark2") +
+    # scale_linetype_manual(values = c(4,2,1,4)) + 
+    theme_linedraw() +
+    theme(axis.text = element_text(color = "black", face = "bold"),
+         strip.background = element_blank(),
+         strip.text = element_text(size = 8, color = "black", hjust = 1, vjust = -1),
+         legend.position = "right",
+          legend.title = element_blank(),
+         plot.margin = unit(c(1,3,1,1), "lines")) +
+    labs(x = "MAG relative abundance", y = "ASV relative abundance", 
+         title = "") +
+    guides(fill = guide_legend(ncol = 1), 
+          col = guide_legend(ncol = 1))
+# svg("bestfit-dictyochophyte-panel.svg", h=5,w=7)
+dictyo_bestfit
+# dev.off()
+```
+
+# Import list of MAGs with dictyochophyceae
+
+From ASV comparison (n=42).
+r^2 value must be > 0.6, and ASV-MAG occurrence needs to be > 25.
+```{r Select top  dictyo MAGs based on ASV}
+head(dictyo_lm_toplot)
+mag_ASVbased <- select(dictyo_lm_toplot, mag) %>% distinct() %>% 
+  add_column(ASV_based = TRUE)
+dim(mag_ASVbased)
+# head(mag_ASVbased)
+```
+
+From EUKulele lowered threshold (n=33).
+```{r}
+euk_thres <- read.delim("input-data/list_dictyochophyceae.txt", header = FALSE)
+# head(euk_thres)
+dim(euk_thres)
+```
+
+
+Incorporate BUSCO completeness and contamination to pare down the list
+```{r}
+buscos_tmp <- read.csv("input-data/EUK_BUSCO_CC.csv")
+# hist(buscos$Contamination)
+```
+
+
+Combined MAG lists (n=43)
+```{r}
+dictyo_comparison <- euk_thres %>% 
+  add_column(EUK_based = TRUE) %>% 
+  mutate(mag = gsub("-max-level.csv", "", V1)) %>% 
+  select(-V1, mag, EUK_based) %>% 
+  full_join(mag_ASVbased) %>% 
+  left_join(buscos, by = c("mag" = "X"))
+head(dictyo_comparison)
+dim(dictyo_comparison)
+# tmp <- filter(dictyo_comparison, mag %in% dic) %>% select(mag) %>% distinct()
+# View(tmp)
+# View(dictyo_comparison)
+# tmp <- dictyo_comparison %>% select(mag)
+# head(tmp)
+dim(dictyo_comparison)
+# write.table(dictyo_comparison %>% select(mag), file = "all-putative-dictyophyte-mags.txt", 
+            quote = FALSE, row.names = FALSE, col.names = FALSE)
+# ?write.table()
+```
+
+Get stats on comparisons.
+Plan to subset MAGs based on the fact that they were assigned Dictyochophyte class, but lower than the default EUKulele settings, and they had >30% compelteness. We will come back to evaluate the ASV assignment here. 
+```{r}
+# Number that overlap
+tmp <- dictyo_comparison %>% 
+  filter(!is.na(EUK_based)) %>% 
+  # filter(!is.na(ASV_based)) %>% 
+  filter(Completeness >= 40) %>% 
+  data.frame
+dim(tmp)
+
+# write.table(tmp %>% select(mag), file = "actual-putative-dictyophyte-mags.txt",
+            # quote = FALSE, row.names = FALSE, col.names = FALSE)
+
+# Isolate 43 putative dictyochophyceae MAGs
+putative_dictyo <- as.character(unique(tmp$mag))
+length(putative_dictyo)
+```
+
+```{r}
+# head(metaT_metadata)
+metaT_small_sizefrac <- metaT_metadata %>% 
+  select(Depth_sizefrac, ERR_list) %>% 
+  separate_rows(ERR_list, sep = ", ") %>% 
+  separate(Depth_sizefrac, c("DEPTH", "min", "max"), sep = "-", remove = FALSE) %>% 
+  unite(SIZEFRAC, min, max, sep = "-") %>% 
+  filter(SIZEFRAC == "0.8-5.00") %>% 
+  data.frame
+head(metaT_small_sizefrac)
+# unique(metaT_small_sizefrac$SIZEFRAC)
+
+# write.table(metaT_small_sizefrac$ERR_list, file = "ERR-metaT-smallsizefrac.txt", 
+            # col.names = FALSE, row.names = FALSE, quote = FALSE)
+
+```
+
+
+
+# Dictyochophyte MAG abundance profiles
+
+Isolate TPM MAG abundances.
+```{r}
+# Import MAG counts
+mag_counts_updated <- read.csv("input-data/MAG_tpm.csv")
+# head(mag_counts_updated)
+head(metaG_reformat)
+
+dictyo_mag_tpm <- mag_counts_updated %>% 
+  filter(Genome %in% putative_dictyo) %>% 
+  pivot_longer(cols = starts_with("ERR"), names_to = "run_accession", values_to = "tpm") %>%
+  left_join(metaG_reformat) %>% 
+  data.frame
+# View(dictyo_mag_tpm %>% filter(is.na(REGION))) 
+head(dictyo_mag_tpm)
+dim(dictyo_mag_tpm)
+colnames(dictyo_mag_tpm)
+# length(unique(dictyo_mag_tpm$Genome))
+```
+
+Sum TPM of MAGs based on Size Fraction, Location, and Depth
+```{r}
+dictyo_MAG_tpm_location <- dictyo_mag_tpm %>% 
+  filter(!is.na(REGION)) %>% 
+  group_by(mag = Genome, DEPTH, REGION, SIZEFRAC) %>% 
+  summarise(mag_tpm = sum(tpm)) %>% 
+  mutate(log_mag_tpm = log(mag_tpm)) %>% 
+  unite(SAMPLE, REGION, DEPTH, SIZEFRAC, sep = " ", remove = FALSE)
+dim(dictyo_MAG_tpm_location)
+hist(dictyo_MAG_tpm_location$log_mag_tpm)
+# View(dictyo_MAG_tpm_location)
+```
+
+```{r, fig.height=8, fig.width=10}
+# ggplot(dictyo_MAG_tpm_location, aes(x = SAMPLE, y = mag, fill = log_mag_tpm)) + 
+#   geom_tile(color = "white")
+```
+
+Visualize MAG dictyochophyceae with pheatmap - MAG relative abundance.
+```{r}
+library(pheatmap)
+```
+
+```{r}
+# head(dictyo_MAG_tpm_location)
+# tmp <- filter(dictyo_MAG_tpm_location, mag == "IO-all-SRF-0-8-5-00_bin-80")
+# tmp
+```
+
+
+```{r Format for pheatmap input}
+pheat_dict_mags <- dictyo_MAG_tpm_location %>% 
+  select(mag, SAMPLE, log_mag_tpm) %>% 
+  filter(!is.na(log_mag_tpm)) %>%
+  mutate_if(is.numeric, function(x) ifelse(is.infinite(x), 0, x)) %>% 
+  pivot_wider(id_cols = SAMPLE, names_from = mag, values_from = log_mag_tpm, values_fill = 0) %>% 
+  column_to_rownames(var = "SAMPLE")
+head(pheat_dict_mags[1:3])
+# View(pheat_dict_mags)
+str(pheat_dict_mags)
+# ?pivot_wider()
+```
+
+
+```{r}
+# Obtain annotation
+annotate_dictyo <- dictyo_MAG_tpm_location %>%
+  ungroup() %>% 
+  filter(!is.na(REGION)) %>%
+  select(SAMPLE, REGION, DEPTH, SIZEFRAC) %>% 
+  distinct() %>% 
+  column_to_rownames(var = "SAMPLE")
+# View(annotate_dictyo)
+rownames(annotate_dictyo) <- rownames(pheat_dict_mags)
+rownames(pheat_dict_mags)
+unique(annotate_dictyo$REGION)
+unique(annotate_dictyo$DEPTH)
+unique(annotate_dictyo$SIZEFRAC)
+
+# Specify color schema
+annotation_colors_dictyo = list(
+  REGION = c(IO= "#711518", MS= "#ce536b", NAO= "#c76b4a", NPO= "#dfa837", SAO= "#93b778", SO= "#61ac86", SPO= "#657abb", RS= "#67765b"),
+  DEPTH = c(DCM= "#74a9cf", FSW= "#969696", SRF= "#d0d1e6", MIX= "#0570b0", MES= "#023858", ZZZ= "#252525"),
+  SIZEFRAC = c(`0.8-5.00` = "#f7fcb9",`180-2000.00` = "#004529", `20-180.00` = "#41ab5d",`5-20.00` = "#addd8e"))
+    
+    # `20-180` = "#41ab5d", `5-20` = "#addd8e", `0.8-5` = "#f7fcb9", `0.8-3` = "#f7fcb9", `180-2000` = "#004529", `0.8->` = "#fed976", `0.8-20` = "#fed976", `3->` = "#c7e9b4", `0.22-3` = "#41ab5d")
+# )
+# SIZEFRAC = c(`20-180` = "#41ab5d", `5-20` = "#addd8e", `0.8-5` = "#f7fcb9", `0.8-3` = "#f7fcb9", `180-2000` = "#004529", `0.8->` = "#fed976", `0.8-20` = "#fed976", `3->` = "#c7e9b4", `0.22-3` = "#41ab5d"
+
+```
+
+MAG relative abundace by sample and TPM.
+```{r, fig.height=14, fig.width=13}
+# svg("figs/pheatmap-MAG-relabun-bysample.svg", h = 17, w = 17)
+pheatmap(pheat_dict_mags,
+         annotation_row = annotate_dictyo,
+         annotation_colors = annotation_colors_dictyo,
+         scale = "none",
+         cluster_cols = TRUE,
+         cluster_rows = TRUE,
+         cellwidth = 10, cellheight = 10,
+         main = "MAG Relative Abundance (TPM)")
+# dev.off()
+# ?pheatmap()
+```
+
+## By region only
+```{r}
+# View(dictyo_MAG_tpm_location)
+```
+
+```{r}
+region_dictyo <- dictyo_MAG_tpm_location %>% 
+  replace_na(list(mag_tpm=0)) %>% 
+  group_by(REGION, mag) %>% 
+    summarise(mag_sum_tpm = sum(mag_tpm))
+
+region_order <- c("IO","MS","NAO","NPO","SAO","SO","SPO","RS")
+region_color <- c("#711518", "#ce536b", "#c76b4a", "#dfa837", "#93b778", "#61ac86", "#657abb", "#67765b")
+region_dictyo$REGION_ORDER <- factor(region_dictyo$REGION, levels = region_order)
+names(region_color) <- region_order
+# View(region_dictyo)
+```
+
+```{r, fig.width=8, fig.height=6}
+ggplot(region_dictyo, aes(x = mag, fill = REGION_ORDER, y = mag_sum_tpm)) +
+  geom_bar(color = "white", stat = "identity") +
+  scale_fill_manual(values = region_color) +
+  theme_linedraw() +
+  coord_flip() +
+  scale_y_continuous(expand = c(0,0)) +
+  theme(legend.title = element_blank()) +
+  labs(y = "MAG Abundance TPM", x = "Putative Dictyochophyte MAGs")
+```
+
+
+# Dictyochophyte abundance profile - metaT mapped to MAGs
+
+
+
+---
+
+# Dictyochophyte MAGs
+## Import and format mapping statistics
+```{r Import mapping stats from salmon}
+# /vortexfs1/omics/alexander/halexander/2020-05-euk-abund/2020-dictyochophyte/salmon/PRJEB6609
+mag80 <- read.csv("input-data/IO-all-SRF-0-8-5-00_bin-80.mapping.statistics.csv")
+mag158 <- read.csv("input-data/MS-all-SRF-0-8-5-00_bin-158.mapping.statistics.csv")
+mag588 <- read.csv("input-data/MS-all-SRF-0-8-5-00_bin-588.mapping.statistics.csv")
+mag590 <- read.csv("input-data/SAO-all-SRF-0-8-5-00_bin-590.mapping.statistics.csv")
+
+## Column descriptions:
+# ERRxxx = metaT sample
+# number mapped = number of transcripts from ERRxxx that mapped to the MAG
+# num processed = total number of transcripts within ERRxx
+# percent mapped = % of the ERRxx transcripts that mapped to the MAG
+```
+
+Plan to examine the percent mapped and such, but assigning a universal threshold is difficult... Why do I need to cut off specific ERRxxxs?
+
+
+```{r Compile input mapping statistics}
+# head(mag80)
+metaT <- read.delim("input-data/PRJEB6609_metaT_wenv.txt")
+
+# Fxn to add a column for each MAT
+process_stats <- function(df, name) {
+  df %>% 
+    add_column(MAG = name)
+}
+
+# Code block to combine all MAG information
+all_map_stats <- process_stats(mag80, "MAG-80") %>% 
+  bind_rows(process_stats(mag158, "MAG-158"),
+            process_stats(mag588, "MAG-588"),
+            process_stats(mag590, "MAG-590")) %>% 
+  # pivot_wider(names_from = MAG, names_sep = ".",
+  #             values_from = c(num_mapped, num_processed, percent_mapped),
+  #             values_fill = 0) %>% 
+  left_join(metaT, by = c("X" = "run_accession")) %>% 
+  select(run_accession = X, MAG, starts_with("num_mapped"),
+         starts_with("num_processed"),
+         starts_with("percent_mapped"), sample_alias,
+         Station, Latitude, Longitude, Env.feature, Sample.material, ends_with("µm"),
+         OS.region, BG.province) %>% 
+  separate(Sample.material, c("TARA", "stn", "DEPTH", "SIZEFRAC"), sep = "_") %>%
+  separate(OS.region, c("excess", "rest"), sep = "\\[") %>% 
+  separate(rest, c("REGION", "rest"), sep = "\\]") %>% 
+  select(-TARA, -stn, -excess, -rest)
+
+# Information for all MAGs is combined here with additional metadata
+head(all_map_stats)
+```
+
+## Plot intersection by percent mapped
+```{r Function to map perc, fig.height=7, fig.width=8}
+
+intersect_ERR_percentmapped <- function(df,PERCMAP) {
+  df %>% 
+  filter(percent_mapped > PERCMAP) %>%
+  group_by(run_accession) %>% 
+  summarize(SampleFreq = list(MAG)) %>% 
+  ggplot(aes(x = SampleFreq)) +
+    geom_bar(fill = "#d6a444", color = "black", width = 0.4) +
+    scale_x_upset(order_by = "degree",
+                  n_intersections = Inf) +
+    scale_y_continuous(expand = c(0,0)) +
+  theme_classic() +
+  theme_combmatrix() +
+  labs(x = "Frequency across MAGs", 
+       y = "Total number of samples",
+       title = paste("Intersection with >", PERCMAP))
+}
+
+plot_grid(intersect_ERR_percentmapped(all_map_stats, 0.0001),
+          intersect_ERR_percentmapped(all_map_stats, 0.001),
+          intersect_ERR_percentmapped(all_map_stats, 0.01),
+          intersect_ERR_percentmapped(all_map_stats, 0.1),
+          ncol = 2, nrow = 2)
+```
+
+## Plot general dictyochophyte intersection
+Plot by shared ERRxx based on depth, size fraction, and region.
+```{r, fig.height=4, fig.width=18}
+plot_grid(
+  all_map_stats %>% 
+  filter(percent_mapped > 0.01) %>%
+  group_by(run_accession, DEPTH) %>% 
+  summarize(SampleFreq = list(MAG)) %>% 
+  ggplot(aes(x = SampleFreq)) +
+    geom_bar(color = "black", width = 0.5, aes(fill = DEPTH)) +
+    scale_fill_brewer(palette = "Spectral") +
+    scale_x_upset(order_by = "degree",
+                  n_intersections = Inf) +
+    scale_y_continuous(expand = c(0,0)) +
+  theme_classic() +
+  theme_combmatrix()  +
+  labs(x = "Frequency across MAGs", 
+       y = "Total number of samples",
+       title = "by Depth"),
+all_map_stats %>% 
+  filter(percent_mapped > 0.01) %>%
+  group_by(run_accession, SIZEFRAC) %>% 
+  summarize(SampleFreq = list(MAG)) %>% 
+  ggplot(aes(x = SampleFreq)) +
+    geom_bar(color = "black", width = 0.5, aes(fill = SIZEFRAC)) +
+    scale_fill_brewer(palette = "Accent") +
+    scale_x_upset(order_by = "degree",
+                  n_intersections = Inf) +
+    scale_y_continuous(expand = c(0,0)) +
+  theme_classic() +
+  theme_combmatrix()  +
+  labs(x = "Frequency across MAGs", 
+       y = "Total number of samples",
+       title = "by Size Fraction"),
+all_map_stats %>% 
+  filter(percent_mapped > 0.01) %>%
+  group_by(run_accession, REGION) %>% 
+  summarize(SampleFreq = list(MAG)) %>% 
+  ggplot(aes(x = SampleFreq)) +
+    geom_bar(color = "black", width = 0.5, aes(fill = REGION)) +
+    scale_fill_brewer(palette = "Set2") +
+    scale_x_upset(order_by = "degree",
+                  n_intersections = Inf) +
+    scale_y_continuous(expand = c(0,0)) +
+  theme_classic() +
+  theme_combmatrix()  +
+  labs(x = "Frequency across MAGs", 
+       y = "Total number of samples",
+       title = "by Region"),
+    ncol = 3, nrow = 1)
+head(all_map_stats)
+```
+
+```{r}
+head(all_map_stats)
+all_map_stats %>% 
+  filter(percent_mapped > 0.0001) %>%
+  group_by(run_accession, MAG, REGION) %>% 
+    summarize(SUM_nummapped = sum(num_mapped)) %>% 
+  ungroup() %>% 
+  group_by(run_accession, REGION) %>% 
+  summarize(SampleFreq = list(MAG)) %>% 
+  ggplot(aes(x = SampleFreq)) +
+    geom_bar(color = "black", width = 0.5, aes(fill = REGION)) +
+    scale_fill_brewer(palette = "Set2") +
+    scale_x_upset(order_by = "degree",
+                  n_intersections = Inf) +
+    scale_y_continuous(expand = c(0,0)) +
+  theme_classic() +
+  theme_combmatrix()  +
+  labs(x = "Frequency across MAGs", 
+       y = "Total number of samples",
+       title = "by Region")
+```
+
+
+# Work with a subset of the ERRs that mapped to the MAGs
+```{r Subset by abundances}
+
+# number of metaT reads mapped / total number of metaT reads processed = percent mapped.
+## Establish a 0.1% cutoff, so all ERRs considered needed at least 0.1% of reads to map to these dictyochophyte MAGs
+perc_mapped <- all_map_stats %>% 
+  filter(percent_mapped >= 0.1)
+
+perc_mapped_0.1 <- as.character(unique(perc_mapped$run_accession))
+length(perc_mapped_0.1) # n = 286
+
+
+all_mapped <- all_map_stats %>% 
+  group_by(run_accession) %>% 
+  summarise(RelAbun = num_mapped / sum(num_mapped)) %>% 
+  filter(RelAbun >= 0.5) %>% 
+  data.frame
+
+total_mapped_0.5 <- as.character(unique(all_mapped$run_accession))
+length(total_mapped_0.5) # n = 183
+
+# hist(all_mapped$RelAbun) # n = 183
+# length(unique(all_mapped$run_accession))
+# head(all_mapp_0.1)
+```
+
+### What are the ERRs kept?
+```{r Subset by 0.1 perc mapped Sum by region}
+# perc_mapped_0.1
+
+mapped_by0.1 <- all_map_stats %>% 
+  filter(run_accession %in% perc_mapped_0.1) %>%
+  group_by(MAG, DEPTH, SIZEFRAC, REGION) %>% 
+  summarise(SUM_mapped = sum(num_mapped),
+            # Recalculate % mapped, based on the subset
+            PERC_MAPPED = 100*(SUM_mapped/(sum(num_processed))),
+            LOG_mapped = log10(SUM_mapped)) %>% 
+  unite(site, REGION, DEPTH, SIZEFRAC, sep = "_", remove = FALSE) %>% 
+  data.frame
+# head(mapped_by0.1)
+# range(mapped_by0.1$SUM_mapped)
+# hist(mapped_by0.1$LOG_mapped)
+# sum(mapped_by0.1$PERC_MAPPED)
+
+all_mapped_nocutoff <- all_map_stats %>% 
+  group_by(MAG, DEPTH, SIZEFRAC, REGION) %>% 
+  summarise(SUM_mapped = sum(num_mapped),
+            # Recalculate % mapped, based on the subset
+            PERC_MAPPED = 100*(SUM_mapped/(sum(num_processed))),
+            LOG_mapped = log10(SUM_mapped)) %>% 
+  unite(site, REGION, DEPTH, SIZEFRAC, sep = "_", remove = FALSE) %>% 
+  data.frame
+# head(all_mapped_nocutoff)
+```
+
+```{r Tile plot log of mapped, fig.height=9, fig.width=4}
+# ggplot(mapped_by0.1, aes(x = MAG, y = site, fill = LOG_mapped)) +
+#   geom_tile(color = "NA", size = 1) +
+#   scale_fill_gradient(low = "#d9d9d9", high = "#000000", na.value = NA) +
+#   labs(x = "", y = "") +
+#   theme_minimal() + theme(axis.text = element_text(color = "black"))
+
+# ggplot(all_mapped_nocutoff, aes(x = MAG, y = site, fill = LOG_mapped)) +
+#   geom_tile(color = "NA", size = 1) +
+#   scale_fill_gradient(low = "#d9d9d9", high = "#000000", na.value = NA) +
+#   labs(x = "", y = "") +
+#   theme_minimal() + theme(axis.text = element_text(color = "black"))
+```
+
+```{r}
+library(pheatmap)
+```
+
+```{r Pheatmap format}
+# Transform for pheatmap
+# head(mapped_by0.1)
+# pheat_mapped <- mapped_by0.1 %>% 
+pheat_mapped <- all_mapped_nocutoff %>% 
+  select(MAG, site, SUM_mapped) %>% 
+  pivot_wider(id_cols = site, names_from = MAG, values_from = SUM_mapped) %>% 
+  column_to_rownames(var = "site")
+# head(pheat_mapped)
+# ?pivot_wider
+
+# Obtain annotation
+# annotate_dictyo <- mapped_by0.1 %>% 
+annotate_dictyo <- all_mapped_nocutoff %>%
+  select(site, DEPTH, SIZEFRAC, REGION) %>% 
+  distinct() %>% 
+  column_to_rownames(var = "site")
+
+rownames(annotate_dictyo) <- rownames(pheat_mapped)
+
+unique(annotate_dictyo$REGION)
+unique(annotate_dictyo$DEPTH)
+unique(annotate_dictyo$SIZEFRAC)
+
+# Specify color schema
+annotation_colors_dictyo = list(
+  REGION = c(IO= "#711518", MS= "#ce536b", NAO= "#c76b4a", NPO= "#dfa837", SAO= "#93b778", SO= "#61ac86", SPO= "#657abb"), #RS= "#67765b"
+  DEPTH = c(DCM= "#74a9cf", FSW= "#969696", SRF= "#d0d1e6", MIX= "#0570b0", MES= "#023858", ZZZ= "#252525"),
+  SIZEFRAC = c(`20-180` = "#41ab5d", `5-20` = "#addd8e", `0.8-5` = "#f7fcb9", `0.8-3` = "#f7fcb9", `180-2000` = "#004529", `0.8->` = "#fed976", `0.8-20` = "#fed976", `3->` = "#c7e9b4")
+)
+
+```
+
+Metatranscriptome read distribution by number of reads mapped to dictyochophyte MAG, by region, depth, and size fraction.
+
+```{r, fig.height=10, fig.width=7}
+# pheatmap(pheat_mapped, 
+#          annotation_row = annotate_dictyo, 
+#          annotation_colors = annotation_colors_dictyo,
+#          scale = "row", 
+#          cluster_cols = FALSE, 
+#          cluster_rows = TRUE,
+#          cellwidth = 10, cellheight = 10)
+
+# Pair with map?
+```
+
+
+```{r Prep df for heat map}
+str(all_map_stats)
+# head(all_map_stats)
+pheat_mapped_all <- all_map_stats %>% 
+  type.convert(as.is = TRUE) %>%
+  unite(site, REGION, DEPTH, SIZEFRAC, sep = "_", remove = FALSE) %>%
+  group_by(site, MAG) %>% 
+  summarise(sum_num_mapped = sum(num_mapped),
+            log_mapped = log(sum_num_mapped)) %>% 
+  select(MAG, site, log_mapped) %>% 
+  pivot_wider(id_cols = site, names_from = MAG, values_from = log_mapped, values_fill = 0) %>% 
+  column_to_rownames(var = "site")
+# head(pheat_mapped_all)
+annotate_dictyo_all <- all_map_stats %>% 
+  unite(site, REGION, DEPTH, SIZEFRAC, sep = "_", remove = FALSE) %>%
+  select(site, DEPTH, SIZEFRAC, REGION) %>% 
+  distinct() %>% 
+  column_to_rownames(var = "site")
+
+rownames(annotate_dictyo_all) <- rownames(pheat_mapped_all)
+
+unique(annotate_dictyo_all$REGION)
+unique(annotate_dictyo_all$DEPTH)
+unique(annotate_dictyo_all$SIZEFRAC)
+
+# Specify color schema
+annotation_colors_dictyo = list(
+  REGION = c(IO= "#711518", MS= "#ce536b", NAO= "#c76b4a", NPO= "#dfa837", SAO= "#93b778", SO= "#61ac86", SPO= "#657abb"), #RS= "#67765b"
+  DEPTH = c(DCM= "#74a9cf", FSW= "#969696", SRF= "#d0d1e6", MIX= "#0570b0", MES= "#023858", ZZZ= "#252525"),
+  SIZEFRAC = c(`20-180` = "#41ab5d", `5-20` = "#addd8e", `0.8-5` = "#f7fcb9", `0.8-3` = "#f7fcb9", `180-2000` = "#004529", `0.8->` = "#fed976", `0.8-20` = "#fed976", `3->` = "#c7e9b4")
+)
+
+```
+
+
+```{r, fig.height=14, fig.width=5}
+pheatmap(pheat_mapped_all, 
+         annotation_row = annotate_dictyo_all, 
+         annotation_colors = annotation_colors_dictyo,
+         # scale = "row", 
+         # cluster_cols = FALSE,
+         # cluster_rows = FALSE,
+         cluster_cols = TRUE,
+         cluster_rows = TRUE,
+         cellwidth = 10, cellheight = 10,
+         color = c("#f7fcfd","#e0ecf4","#bfd3e6","#9ebcda","#8c96c6","#8c6bb1","#88419d","#810f7c","#4d004b"),
+         main = "Number of reads mapped (log)")
+# ?pheatmap
+```
+
+## Plot by map
+```{r Import map library}
+library(rworldmap)
+```
+
+```{r Format MAG map stats for mapping}
+# head(all_map_stats)
+map_plot_df_params <- all_map_stats %>% 
+  select(MAG, Latitude, Longitude, num_mapped, DEPTH, SIZEFRAC, REGION) %>% 
+  group_by(MAG, Latitude, Longitude, DEPTH, SIZEFRAC, REGION) %>% 
+  summarise(sum_mapped = sum(num_mapped),
+            log_mapped = log(sum_mapped)) %>% 
+  data.frame
+
+map_plot_df <- all_map_stats %>% 
+  select(MAG, Latitude, Longitude, num_mapped, DEPTH, SIZEFRAC, REGION) %>% 
+  ungroup() %>%
+  group_by(MAG, Latitude, Longitude) %>% 
+  summarise(sum_mapped = sum(num_mapped),
+            log_mapped = log(sum_mapped),
+            .groups = "rowwise") %>% 
+  mutate(Location = paste(Latitude, Longitude)) %>% 
+  data.frame
+# ?summarise()
+head(map_plot_df)
+# dim(map_plot_df)
+```
+
+
+```{r Load background map}
+map_get_world <- function(resolution="coarse"){
+  worldMap <- rworldmap::getMap(resolution = resolution) # Change to "coarse" for global maps / "low" for regional maps
+  world.points <- fortify(worldMap)
+  world.points$region <- world.points$id
+  world.df <- world.points[,c("long","lat","group", "region")]
+}
+
+map_world <- function(color_continents = "#969696", color_borders = "#969696", resolution = "coarse") {
+world.df <- map_get_world(resolution)
+map <- ggplot() +
+    geom_polygon(data = world.df, aes(x=long, y = lat, group = group), fill=color_continents, color=color_borders) +
+    # scale_fill_manual(values= color_continents , guide = FALSE) +
+    scale_x_continuous(breaks = (-4:4) * 45) +
+    scale_y_continuous(breaks = (-2:2) * 30) +
+    xlab("Longitude") + ylab("Latitude") +
+    coord_fixed(1.3) +
+    theme_bw()
+    # species_map <- species_map + coord_map ()  # Mercator projection
+    # species_map <- species_map + coord_map("gilbert") # Nice for the poles
+  return(map)
+  }
+```
+
+```{r Plot total mapping stats, fig.height=10, fig.width=15}
+# Plot
+map_world() + 
+  geom_jitter(data = map_plot_df, 
+              aes(x = Longitude, y = Latitude, fill = MAG, size = sum_mapped), shape = 21, color = "black") +
+  scale_size_continuous(range = c(0,20)) +
+  facet_wrap(MAG ~ .) +
+  theme(strip.background = element_blank(),
+        strip.text = element_text(face = "bold", size = 12, hjust = 1, vjust = 1)) +
+  labs(title = "Total transcripts mapped to each Dictyochophyceae MAG")
+```
+
+```{r}
+# install.packages("scatterpie")
+library(scatterpie)
+```
+
+```{r}
+# Re-format for scatter pie
+
+# head(map_plot_df)
+map_plot_df_2 <- map_plot_df %>% 
+  select(-log_mapped) %>% 
+  pivot_wider(names_from = MAG, values_from = sum_mapped, 
+              values_fill = 0) %>% 
+  mutate_each(funs(if(is.integer(.)) as.numeric(.) else .)) %>% 
+   mutate_each(funs(if(is.character(.)) as.factor(.) else .)) %>% 
+  mutate(RADIUS = sum(`MAG-158`, `MAG-588`, `MAG-590`, `MAG-80`))
+# ?pivot_wider
+# head(map_plot_df_2)
+str(map_plot_df_2)
+```
+
+
+```{r, fig.height=5, fig.width=8}
+# Plot
+mags <- colnames(map_plot_df_2 %>% select(starts_with("MAG-")))
+mags
+str(map_plot_df_2)
+
+# svg("map-withpies.svg", h =4, w = 8)
+map_world() + 
+  geom_scatterpie(aes(x = Longitude, y = Latitude,
+                      group = Location), 
+                  data = map_plot_df_2,
+                  cols = mags, pie_scale = 2.0,
+                  sorted_by_radius = FALSE,
+                  legend_name = "mapped") + 
+  coord_fixed() +
+  scale_fill_manual(values = c("#66c2a5", "#fc8d62", "#8da0cb", "#e78ac3"))
+# dev.off()
+```
+
+```{r}
+set.seed(123)
+long <- rnorm(50, sd=100)
+lat <- rnorm(50, sd=50)
+d <- data.frame(long=long, lat=lat)
+d <- with(d, d[abs(long) < 150 & abs(lat) < 70,])
+n <- nrow(d)
+d$region <- factor(1:n)
+d$A <- abs(rnorm(n, sd=1))
+d$B <- abs(rnorm(n, sd=2))
+d$C <- abs(rnorm(n, sd=3))
+d$D <- abs(rnorm(n, sd=4))
+d[1, 4:7] <- d[1, 4:7] * 3
+head(d)
+str(d)
+```
+```{r}
+d$radius <- 6 * abs(rnorm(n))
+world <- map_data('world')
+p <- ggplot(world, aes(long, lat)) +
+    geom_map(map=world, aes(map_id=region), fill=NA, color="black") +
+    coord_quickmap()
+p + geom_scatterpie(aes(x=long, y=lat, group=region, r=radius),
+                    data=d, cols=LETTERS[1:4], color=NA, alpha=.8) +
+    geom_scatterpie_legend(d$radius, x=-160, y=-55)
+```
+
+
+
+> Need to work on the choice and presentation of which ERRs to select for this type of analysis. Framework is here though - What is more important, distribution by region, depth, size frac? or just getting the data somewhere?
+
+# Incorporate KEGG identities
+
+```{r Import TPM summeds}
+# Using tpm summed counts
+tpm158 <- read.csv("input-data/MS-all-SRF-0-8-5-00_bin-158.tpm.summedcounts")
+tpm588 <- read.csv("input-data/MS-all-SRF-0-8-5-00_bin-588.tpm.summedcounts")
+tpm80 <- read.csv("input-data/IO-all-SRF-0-8-5-00_bin-80.tpm.summedcounts")
+tpm590 <- read.csv("input-data/SAO-all-SRF-0-8-5-00_bin-590.tpm.summedcounts")
+
+# Import Kegg IDs of interest
+kegg_ids <- read.delim("input-data/Custom_KO_list_30-04-2020.txt")
+# head(tpm588)
+```
+
+```{r Compile all TPM data}
+# Function to format
+tpm_format <- function(df, mag){
+  df %>% 
+  # select(KO, all_of(perc_mapped_0.1)) %>% 
+  select(KO, all_of(as.character(unique(all_map_stats$run_accession)))) %>% 
+  pivot_longer(cols = starts_with("ERR")) %>% 
+  add_column(MAG = mag) %>% 
+  data.frame
+}
+# head(perc_mapped_0.1)
+# head(all_map_stats)
+tpm_alldictyo <- bind_rows(
+  tpm_format(tpm158, "MAG-158"),
+  tpm_format(tpm588, "MAG-588"),
+  tpm_format(tpm80, "MAG-80"),
+  tpm_format(tpm590, "MAG-590")) %>% 
+  group_by(KO, MAG) %>% 
+  summarise(SUM_TPM = sum(value)) %>% 
+  left_join(kegg_ids) %>% 
+  data.frame
+
+# head(tpm_alldictyo)
+```
+
+```{r TPM all pathways}
+# dim(tpm_alldictyo)
+length(unique(tpm_alldictyo$KO))
+head(tpm_alldictyo)
+sum(tpm_alldictyo$SUM_TPM)
+
+tpm_pathways <- tpm_alldictyo %>% 
+  filter(!is.na(Target)) %>% 
+  filter(!(Category == "other")) %>%
+  filter(!(Category == "else"))
+length(unique(tpm_pathways$KO))
+# 1.1 billion
+# head(tpm_pathways)
+100*(sum(tpm_pathways$SUM_TPM) / sum(tpm_alldictyo$SUM_TPM))
+```
+
+Determined that from the total 4805 unique KEGGs, when I subset to the targeted version for looking at trophic modes, I get 240 unique KEGGs. When taking that as a percent of the total TPM, this is looking at 55% of the data.
+
+```{r Shared functional profiles ALL DATA}
+
+# head(tpm_alldictyo)
+
+tpm_alldictyo %>% 
+  group_by(KO, MAG) %>% 
+    summarise(SUM_TPM_sum = sum(SUM_TPM)) %>% 
+    ungroup() %>% 
+  group_by(KO) %>% 
+    summarise(MAGfreq = list(MAG)) %>% 
+    ggplot(aes(MAGfreq)) +
+      geom_bar(color = "black", fill = "#2b53a7", width = 0.7) +
+      scale_x_upset(order_by = "degree",
+                  n_intersections = Inf) +
+    scale_y_continuous(expand = c(0,0)) +
+  theme_classic() +
+  theme_combmatrix()  +
+  labs(x = "Frequency across MAGs",
+       y = "Shared transcripts",
+       title = "by shared KEGG ID")
+```
+
+
+**To do - get FULL kegg pathway information and work to start breaking down what is shared and what is unique.
+
+
+```{r}
+# dim(tpm_pathways)
+# View(select(tpm_pathways, CAT_ORDER, Target_2) %>%  distinct())
+```
+
+
+
+```{r Shared functional profiles subset of data, fig.width=10, fig.height=5}
+category_list <- c("Photosynthesis","Calvin cycle","Gluconeogenesis-Glycolysis","Glyoxylate cycle","TCA cycle","GS/GOGAT","AMT","NRT","Inorganic N uptake and assimilation","Organic N uptake and assimilation","Urea cycle","Nitrate reduction (assimilatory)","P metabolism","PDH","Actin polymerization","Lysosome associated","Chitinase","Phagosome associated","Endocytosis","Fatty acid biosynthesis","Fatty acid breakdown","Motility and prey recognition","SNARE complex","V-type ATPase", "other")
+category_color <- c("#ffffb2","#fed976","#feb24c","#fd8d3c","#f03b20","#bd0026","#f7fcb9","#addd8e","#41ab5d","#238443","#006837","#004529","#02818a","#a6bddb","#41b6c4","#1d91c0","#225ea8","#253494","#081d58","#f2f0f7","#cbc9e2","#9e9ac8","#756bb1","#54278f", "white")
+tpm_pathways$CAT_ORDER <-factor(tpm_pathways$Target_2, levels = rev(category_list))
+names(category_color) <- (category_list)
+
+# head(tpm_pathways)
+
+tpm_pathways %>% 
+  group_by(KO, MAG, Target, CAT_ORDER) %>% 
+    summarise(SUM_TPM_sum = sum(SUM_TPM)) %>% 
+    ungroup() %>% 
+  group_by(KO, CAT_ORDER) %>% 
+    summarise(MAGfreq = list(MAG)) %>% 
+    ggplot(aes(MAGfreq)) +
+      geom_bar(color = "black", width = 0.7, aes(fill = CAT_ORDER)) +
+      scale_fill_manual(values = category_color) +
+      scale_x_upset(order_by = "degree",
+                  n_intersections = Inf) +
+    scale_y_continuous(expand = c(0,0)) +
+  theme_classic() +
+  theme_combmatrix()  +
+  theme(legend.title = element_blank()) +
+  labs(x = "Frequency across MAGs",
+       y = "Total number of KEGG IDs",
+       title = "by Target function")
+```
+
+
+```{r All KEGG IDs}
+# str(tpm_alldictyo)
+pheat_tpm_df <- tpm_alldictyo %>% 
+  type.convert(as.is = TRUE) %>%
+  select(KO, MAG, SUM_TPM) %>% 
+  distinct() %>%
+  pivot_wider(id_cols = MAG, names_from = KO, values_from = SUM_TPM, values_fill = 0) %>% 
+  column_to_rownames(var = "MAG")
+head(pheat_tpm_df)
+dim(pheat_tpm_df)
+# Over 4800 KEGG IDs
+```
+
+
+
+```{r}
+# pheatmap(pheat_tpm_df,
+#          scale = "row",
+#          cluster_cols = FALSE,
+#          cluster_rows = TRUE,
+#          cellwidth = 10, cellheight = 10)
+```
+
+
+```{r}
+# Subset those of interest
+# head(tpm_alldictyo)
+
+tpm_pathways <- tpm_alldictyo %>% 
+  filter(!is.na(Target)) %>% 
+  filter(!(Category == "other")) %>%
+  filter(!(Category == "else")) %>% 
+  group_by(MAG, Category) %>% 
+  summarise(SUM_TPM_bypath = sum(SUM_TPM)) %>% 
+  pivot_wider(id_cols = MAG, names_from = Category, 
+              values_from = SUM_TPM_bypath, values_fill = 0) %>%
+  column_to_rownames(var = "MAG") %>% 
+  data.frame
+# dim(tpm_pathways)
+# View(tpm_pathways)
+# head(tpm_pathways)
+```
+
+```{r}
+pheatmap(tpm_pathways,
+         scale = "column",
+         cluster_cols = TRUE,
+         cluster_rows = TRUE,
+         cellwidth = 10, cellheight = 10)
+```
+
